@@ -41,6 +41,8 @@ config CSKY
 	select DW_APB_TIMER_OF
 	select GENERIC_SCHED_CLOCK
 	select ARCH_HAS_ELF_RANDOMIZE
+	select GENERIC_IRQ_CHIP
+	select MAY_HAVE_SPARSE_IRQ
 
 config NR_CPUS
 	int
@@ -153,9 +155,11 @@ config CPU_CK610
 
 config CPU_CK810
         bool "CSKY CPU ck810"
+	select MMU_HARD_REFILL
 
 config CPU_CK807
         bool "CSKY CPU ck807"
+	select MMU_HARD_REFILL
 endchoice
 
 config MMU_HARD_REFILL
@@ -230,6 +234,7 @@ config CPU_BIG_ENDIAN
 config	SOFT_HANDMISSALIGN
 	bool "Software fixup alignment exception."
 	default y
+	depends on CPU_CK610
 	help
           CSKY CPU cannot fetch/store information which is not
           naturally aligned on the bus, i.e., a 4 byte fetch must start at an
@@ -277,6 +282,22 @@ config SSEG0_BASE
 	help
 	  SSEG0 is usually used as a ram section. set as C(cache), D(dirty) and
 	  V(valid).
+
+config CSKY_NR_IRQS
+	int "NR_IRQS to max virtual interrupt numbers of the whole system"
+	range 64 8192
+	default "128"
+	help
+	  Some platform need more virtual irq numbers the kernel could use, eg: gpio irq.
+	  You find them in /proc/interrupts.
+
+config CSKY_BUILTIN_DTB
+	bool "Use kernel builtin dtb"
+	default n
+
+config CSKY_BUILTIN_DTB_NAME
+	string "kernel builtin dtb name"
+	depends on CSKY_BUILTIN_DTB
 
 menu "irqchip drivers (in csky)"
 

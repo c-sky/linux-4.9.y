@@ -9,26 +9,9 @@
 #include <asm/mmu_context.h>
 #include <asm/pgalloc.h>
 
-/* fixme: reserve mem and mem not work together. */
-static void __init zone_sizes_init(void)
-{
-	unsigned long zone_size[MAX_NR_ZONES];
-	unsigned long min, max;
-
-	min = PFN_UP(memblock_start_of_DRAM());
-	max = PFN_DOWN(memblock_end_of_DRAM());
-
-	memset(zone_size, 0, sizeof(zone_size));
-
-	zone_size[ZONE_NORMAL] = max - min;
-
-	free_area_init_node(0, zone_size, min, NULL);
-}
-
 static void __init csky_memblock_init(void)
 {
-	min_low_pfn = PFN_UP(memblock_start_of_DRAM());
-	max_low_pfn = PFN_DOWN(memblock_end_of_DRAM());
+	unsigned long zone_size[MAX_NR_ZONES];
 
 	memblock_reserve(__pa(_stext), _end - _stext);
 #ifdef CONFIG_BLK_DEV_INITRD
@@ -40,16 +23,24 @@ static void __init csky_memblock_init(void)
 
 	memblock_dump_all();
 
-	zone_sizes_init();
+	/* free_area_init */
+	memset(zone_size, 0, sizeof(zone_size));
+
+	min_low_pfn = PFN_UP(memblock_start_of_DRAM());
+	max_low_pfn = PFN_DOWN(memblock_end_of_DRAM());
+
+	zone_size[ZONE_NORMAL] = max_low_pfn - min_low_pfn;
+
+	free_area_init_node(0, zone_size, min_low_pfn, NULL);
 }
 
-extern void cpu_probe(void);
+extern void cpu_dt_probe(void);
 extern void init_fpu(void);
 void __init setup_arch(char **cmdline_p)
 {
 	*cmdline_p = boot_command_line;
 
-	printk("www.c-sky.com\n");
+	printk("C-SKY: https://c-sky.github.io\n");
 
 	init_mm.start_code = (unsigned long) _stext;
 	init_mm.end_code = (unsigned long) _etext;
@@ -62,12 +53,12 @@ void __init setup_arch(char **cmdline_p)
 
 	unflatten_and_copy_device_tree();
 
+	cpu_dt_probe();
+
 	sparse_init();
 
 	pgd_init((unsigned long)swapper_pg_dir);
 	cache_op_all(DATA_CACHE|CACHE_CLR);
-
-	cpu_probe();
 
 #if defined(CONFIG_VT) && defined(CONFIG_DUMMY_CONSOLE)
 	conswitchp = &dummy_con;
@@ -89,9 +80,13 @@ asmlinkage __visible void __init csky_start(
 	/* Clean up bss section */
 	memset(__bss_start, 0, __bss_stop - __bss_start);
 
+#ifdef CONFIG_CSKY_BUILTIN_DTB
+	printk("Use builtin dtb\n");
+	early_init_dt_scan(__dtb_start);
+#else
 	if (magic == 0x20150401)
 		early_init_dt_scan(param);
-
+#endif
 	start_kernel();
 
 	while(1);

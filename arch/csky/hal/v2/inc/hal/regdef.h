@@ -1,12 +1,7 @@
 #ifndef  __ASM_CSKY_REGDEF_H
 #define  __ASM_CSKY_REGDEF_H
 
-#define sp		r14
 #define syscallid	r7
-#define a0		r0
-#define a1		r1
-#define a2		r2
-#define a3		r3
 #define regs0		r4
 #define regs1		r5
 #define regs2		r6
@@ -22,5 +17,7 @@
  * use as judge restart syscall, see entry.S
  */
 #define r11_sig		r11
+
+#define DEFAULT_PSR_VALUE	0x8f000200
 
 #endif /* __ASM_CSKY_REGDEF_H */

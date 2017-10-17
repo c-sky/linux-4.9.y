@@ -46,7 +46,6 @@
 .export fasthandler
 
 .export fastautohandler
-.export resume
 .export sys_fork, sys_clone
 .export sw_usp
 .export sw_ksp
@@ -328,17 +327,7 @@ tlbmiss:
 	lsri    a1, 6
 	WR_MEL1 a1
 #else
-	lsri    a2, a1, _PGDIR_SHIFT
-	ixw     a0, a2
-	ldw     a0, (a0)
-
-	zext    a1, a1, 21, 12
-	ixw     a0, a1
-	bclri   a0, PTE_BIT
-	ldw     a1, (a0)
-	WR_MEL0 a1
-	ldw     a1, (a0, 4)
-	WR_MEL1 a1
+#error ck8xx only hardrefill for tlbmiss, because some no shadow regs
 #endif
 
 	bgeni   a1, 28           /* TLB write random command, r5 = 0x10000000 */
@@ -766,8 +755,11 @@ ENTRY(trap2)
 1:					/* "1" is for kuser_cmpxchg_fixup */
 	ldw      a3, (a2)
 	cmpne    a0, a3
+#if defined(__CSKYABIV1__)
 	bt       3f
-
+#elif defined(__CSKYABIV2__)
+	bt16     3f
+#endif
 2:					/* "2" is for kuser_cmpxchg_fixup */
 	stw      a1, (a2)
 3:
@@ -800,12 +792,7 @@ ENTRY(kuser_cmpxchg_fixup)
 	lrw	a1, 2b
 	cmpne	a1, a0
 	bt	1f
-// FIXME: abiv2 should use "subi    a1, (2b-1b)", but assembler does not support now!
-#ifdef __CSKYABIV2__
-	lrw	a1, 1b
-#else
-	subi	a1, (2b-1b)		/* get 1b */
-#endif
+	subi	a1, (2b - 1b)		/* get 1b */
 	stw	a1, (sp, 0)		/* set pt_reg's epc = 1b */
 1:
 	rts
@@ -963,14 +950,11 @@ ENTRY(autohandler)
 	jmpi     ret_from_exception
 
 /*
- * Resume execution of a new process.
- * Register definitions comming in:
- *
- * a0   =  current task
- * a1   =  new task
+ * a0 =  prev task_struct *
+ * a1 =  next task_struct *
+ * a0 =  return next
  */
-
-ENTRY(resume)
+ENTRY(__switch_to)
 	lrw      a3, TASK_THREAD        /* struct_thread offset in task_struct */
 	addu     a3, a0                 /* a3 point to thread in prev task_struct */
 
@@ -1060,4 +1044,4 @@ ENTRY(resume)
 	RESTORE_SWITCH_STACK
 
 	rts
-
+ENDPROC(__switch_to)

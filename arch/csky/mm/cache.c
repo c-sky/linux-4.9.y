@@ -8,21 +8,54 @@
 #include <asm/cache.h>
 #include <asm/cacheflush.h>
 #include <asm/cachectl.h>
+#include <hal/reg_ops.h>
+
+static DEFINE_SPINLOCK(cache_lock);
+static unsigned int l2_enable = 0;
+
+void
+cache_op_l2enable(void)
+{
+	l2_enable = 1;
+}
 
 #define __cache_op_line(i, value) \
 	__asm__ __volatile__( \
-		"idly4\n\t" \
 		"mtcr	%0, cr22\n\t" \
-		"bseti  %1, 6\n\t" \
 		"mtcr	%1, cr17\n\t" \
 		::"r"(i), "r"(value))
 
+void
+cache_op_line(unsigned int i, unsigned int value)
+{
+	unsigned long flags;
+	spin_lock_irqsave(&cache_lock, flags);
+	__cache_op_line(i, value | CACHE_CLR | CACHE_OMS);
+	spin_unlock_irqrestore(&cache_lock, flags);
+
+	if (l2_enable)
+		L1_SYNC;
+	else
+		__asm__ __volatile__("sync\n\t");
+}
 
 void
-cache_op_all(unsigned int value)
+cache_op_all(unsigned int value, unsigned int l2)
 {
 	__asm__ __volatile__(
 		"mtcr	%0, cr17\n\t"
+		::"r"(value | CACHE_CLR));
+
+	if (l2_enable) {
+		L1_SYNC;
+		if (l2) goto flush_l2;
+	} else
+		__asm__ __volatile__("sync\n\t");
+
+	return;
+flush_l2:
+	__asm__ __volatile__(
+		"mtcr	%0, cr24\n\t"
 		"sync\n\t"
 		::"r"(value));
 }
@@ -33,21 +66,35 @@ void
 cache_op_range(
 	unsigned int start,
 	unsigned int end,
-	unsigned int value
-	)
+	unsigned int value,
+	unsigned int l2)
 {
-	unsigned long i;
+	unsigned long i, flags;
+	unsigned int val = value | CACHE_CLR | CACHE_OMS;
 
-	if (unlikely((end - start) >= FLUSH_MAX)) {
-		cache_op_all(value | CACHE_CLR);
+	if (unlikely((end - start) >= FLUSH_MAX) ||
+	    unlikely(start < PAGE_OFFSET) ||
+	    unlikely(start >= V3GB_OFFSET)) {
+		cache_op_all(value, l2);
 		return;
 	}
 
-	for(i = start; i < end; i += L1_CACHE_BYTES){
-		__cache_op_line(i, CACHE_OMS | CACHE_CLR | value);
+
+	for(i = start; i < end; i += L1_CACHE_BYTES) {
+		spin_lock_irqsave(&cache_lock, flags);
+		__cache_op_line(i, val);
+		if (l2_enable) {
+			L1_SYNC;
+			if (l2) __asm__ __volatile__(
+				"mtcr	%0, cr24\n\t"
+				::"r"(val));
+		}
+		spin_unlock_irqrestore(&cache_lock, flags);
 	}
 
-	__asm__ __volatile__("sync\n\t"::);
+	if(l2_enable && !l2) return;
+
+	__asm__ __volatile__("sync\n\t");
 }
 
 void flush_dcache_page(struct page *page)
@@ -66,7 +113,7 @@ void flush_dcache_page(struct page *page)
 	 * get faulted into the tlb (and thus flushed) anyways.
 	 */
 	addr = (unsigned long) page_address(page);
-	cache_op_range(addr, addr + PAGE_SIZE, CACHE_INV|CACHE_CLR|DATA_CACHE);
+	cache_op_range(addr, addr + PAGE_SIZE, CACHE_INV|CACHE_CLR|DATA_CACHE, 0);
 }
 
 SYSCALL_DEFINE3(cacheflush,
@@ -77,15 +124,15 @@ SYSCALL_DEFINE3(cacheflush,
 	switch(cache) {
 	case ICACHE:
 		cache_op_range(0, FLUSH_MAX, INS_CACHE|
-					CACHE_INV);
+					CACHE_INV, 0);
 		break;
 	case DCACHE:
 		cache_op_range(0, FLUSH_MAX, DATA_CACHE|
-					CACHE_CLR|CACHE_INV);
+					CACHE_CLR|CACHE_INV, 0);
 		break;
 	case BCACHE:
 		cache_op_range(0, FLUSH_MAX, DATA_CACHE|INS_CACHE|
-					CACHE_CLR|CACHE_INV);
+					CACHE_CLR|CACHE_INV, 0);
 		break;
 	default:
 		return -EINVAL;
@@ -114,7 +161,7 @@ void __update_cache(struct vm_area_struct *vma, unsigned long address,
 		cache_op_all(
 			DATA_CACHE|
 			CACHE_CLR|
-			CACHE_INV);
+			CACHE_INV, 0);
 	}
 #endif
 	if (vma->vm_flags & VM_EXEC ||
@@ -122,7 +169,7 @@ void __update_cache(struct vm_area_struct *vma, unsigned long address,
 		cache_op_all(
 			DATA_CACHE|
 			CACHE_CLR|
-			CACHE_INV);
+			CACHE_INV, 0);
 
 	clear_bit(PG_arch_1, &(page)->flags);
 }

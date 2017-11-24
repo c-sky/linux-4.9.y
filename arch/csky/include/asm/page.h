@@ -32,7 +32,8 @@
 
 #define virt_addr_valid(kaddr)  ((void *)(kaddr) >= (void *)PAGE_OFFSET && \
                                  (void *)(kaddr) < high_memory)
-#define pfn_valid(pfn)          virt_addr_valid(pfn_to_virt(pfn))
+extern unsigned long min_low_pfn, max_pfn;
+#define pfn_valid(pfn)		((pfn >= min_low_pfn) && (pfn < max_pfn))
 
 extern void *memset(void *dest, int c, size_t l);
 extern void *memcpy (void *to, const void *from, size_t l);
@@ -82,12 +83,10 @@ typedef struct page *pgtable_t;
  * We handle pages at KSEG0 for kernels with 32 bit address space.
  */
 
-#define	__PAGE_OFFSET	0x80000000
+#define	PAGE_OFFSET	0x80000000
+#define	V3GB_OFFSET	0xc0000000
 
-/*
- * Memory above this physical address will be considered highmem.
- */
-#define HIGHMEM_START   (PHYS_OFFSET + 0x20000000UL)
+#define LOWMEM_LIMIT	0x20000000
 
 #ifdef CONFIG_PHYSICAL_BASE_CHANGE
 #define PHYS_OFFSET     CONFIG_SSEG0_BASE
@@ -95,9 +94,8 @@ typedef struct page *pgtable_t;
 #define PHYS_OFFSET     0x0
 #endif
 
-#define PAGE_OFFSET	(__PAGE_OFFSET)
-#define UNCACHE_BASE	0xa0000000UL
-#define UNCACHE_MASK	0x1fffffffUL
+#define UNCACHE_BASE	0xa0000000
+#define UNCACHE_MASK	0x1fffffff
 
 #define __pa(x)		(((unsigned long) (x) - PAGE_OFFSET + PHYS_OFFSET) & UNCACHE_MASK)
 #define __va(x)		((void *)((unsigned long) (x) - PHYS_OFFSET + PAGE_OFFSET))

@@ -46,8 +46,8 @@
 #define pte_offset_map(dir, address) \
 	((pte_t *)page_address(pmd_page(*(dir))) + __pte_offset_t(address))
 #define pmd_page(pmd)			(pfn_to_page(pmd_phys(pmd) >> PAGE_SHIFT))
-#define pte_clear(mm,addr,ptep)		set_pte((ptep), __pte(0))
-#define pte_none(pte)			(!pte_val(pte))
+#define pte_clear(mm,addr,ptep)		set_pte((ptep), (((unsigned int)addr&0x80000000)?__pte(1):__pte(0)))
+#define pte_none(pte)			(!(pte_val(pte)&0xfffffffe))
 #define pte_present(pte)		(pte_val(pte) & _PAGE_PRESENT )
 #define pte_pfn(x)			((unsigned long)((x).pte_low >> PAGE_SHIFT))
 #define pfn_pte(pfn, prot)		__pte(((unsigned long long)(pfn) << PAGE_SHIFT) \
@@ -120,7 +120,7 @@ static inline pte_t pte_mkspecial(pte_t pte) { return pte; }
 #include <asm/cacheflush.h>
 
 #define __dcache_flush_line(x) \
-	cache_op_line(x, DATA_CACHE|CACHE_CLR);
+	cache_op_line((u32)x, DATA_CACHE|CACHE_CLR);
 
 #if !defined(__ck807__)
 #define set_pte(pteptr, pteval)			\

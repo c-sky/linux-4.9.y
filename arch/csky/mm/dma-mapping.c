@@ -31,7 +31,7 @@ static void *csky_dma_alloc(
 	if (DMA_ATTR_NON_CONSISTENT & attrs)
 		panic("csky %s panic DMA_ATTR_NON_CONSISTENT.\n", __func__);
 
-	ret =  __get_free_pages(gfp, get_order(size));
+	ret =  __get_free_pages((gfp | __GFP_NORETRY) & (~__GFP_HIGHMEM), get_order(size));
 	if (!ret) {
 		pr_err("csky %s no more free pages, %ld.\n", __func__, ret);
 		return NULL;
@@ -40,7 +40,7 @@ static void *csky_dma_alloc(
 	memset((void *)ret, 0, size);
 
 	cache_op_range(ret, ret + size,
-		DATA_CACHE|CACHE_CLR|CACHE_INV);
+		DATA_CACHE|CACHE_CLR|CACHE_INV, 1);
 
 	*dma_handle = virt_to_phys((void*)ret);
 #ifndef BUGFIX_LC235
@@ -87,7 +87,7 @@ static inline void __dma_sync(
 		cache_op_range(
 			addr, addr+size,
 			DATA_CACHE|
-			CACHE_CLR);
+			CACHE_CLR, 1);
 		break;
 
 	case DMA_FROM_DEVICE:
@@ -96,7 +96,7 @@ static inline void __dma_sync(
 			addr, addr+size,
 			DATA_CACHE|
 			CACHE_CLR|
-			CACHE_INV);
+			CACHE_INV, 1);
 		break;
 
 	default:
